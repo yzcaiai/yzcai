@@ -24,6 +24,8 @@
 
 - [termux部署的使用文档（手机使用）](./wiki/Termux.md) 感谢[@天命不又](https://github.com/tmby)编写
 
+- [windows 本地部署的使用文档](./wiki/windows.md)
+
 - ~~[zeabur部署的使用文档(需付费)](./wiki/zeabur.md) 感谢**墨舞ink**编写~~（已过时且暂时无人更新，欢迎提交pull requests）
 
 - [vertex模式的使用文档](./wiki/vertex.md)
