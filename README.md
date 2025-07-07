@@ -2,7 +2,8 @@
 
 - 这是一个基于 FastAPI 构建的 Gemini API 代理，旨在提供一个简单、安全且可配置的方式来访问 Google 的 Gemini 模型。适用于在 Hugging Face Spaces 上部署，并支持openai api格式的工具集成。
 
-## 项目采用动态更新，随时会有一些小更新同步到主仓库且会自动构建镜像，如果反馈的bug开发者说修了但是版本号没变是正常现象，~~记得勤更新镜像哦~~
+## 管理前端一键部署模板
+[![Use EdgeOne Pages to deploy](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?repository-url=https%3A%2F%2Fgithub.com%2Fwyeeeee%2Fhajimi&root-directory=.%2Fpage&output-directory=..%2Fapp%2Ftemplates%2Fassets&install-command=npm%20install&build-command=npm%20run%20build)
 
 # 本项目基于CC BY-NC 4.0许可开源，需遵守以下规则
 - 您必须给出适当的署名，提供指向本协议的链接，并指明是否（对原作）作了修改。您可以以任何合理方式进行，但不得以任何方式暗示许可方认可您或您的使用。
@@ -113,3 +114,8 @@
     *   `MAX_REQUESTS_PER_MINUTE`：每分钟最大请求数（默认 30）。
     *   `MAX_REQUESTS_PER_DAY_PER_IP`：每天每个 IP 最大请求数（默认 600）。
 *   超过速率限制时返回 429 错误。
+
+# 赞助商
+[![edgeone logo](https://edgeone.ai/_next/static/media/headLogo.daeb48ad.png?auto=format&fit=max&w=384)](https://edgeone.ai)
+CDN acceleration and security protection for this project are sponsored by Tencent EdgeOne.
+本项目的CDN加速及安全防护由腾讯EdgeOne赞助支持。
