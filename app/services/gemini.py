@@ -139,7 +139,8 @@ class GeminiResponseWrapper:
 class GeminiClient:
 
     AVAILABLE_MODELS = []
-    EXTRA_MODELS = os.environ.get("EXTRA_MODELS", "").split(",")
+    extra_models_str = os.environ.get("EXTRA_MODELS", "")
+    EXTRA_MODELS = [model.strip() for model in extra_models_str.split(",") if model.strip()]
 
     def __init__(self, api_key: str):
         self.api_key = api_key
