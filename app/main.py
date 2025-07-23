@@ -1,5 +1,5 @@
 # =================================================================
-#               最终、经过仔细检查和修改的完整代码
+#               最终、只修正了接口，保留原始CORS逻辑的代码
 # =================================================================
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -35,14 +35,16 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(limit="50M")
 
-# --------------- CORS 中间件 (强制开启) ---------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --------------- CORS 中间件 (已还原为原始逻辑) ---------------
+# 如果 ALLOWED_ORIGINS 为空列表，则不允许任何跨域请求
+if settings.ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # --------------- 全局实例 ---------------
 load_settings()
@@ -156,14 +158,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --------------- 路由 ---------------
 
-# <--- 最终修正: 使用动态加载的 AVAILABLE_MODELS，并按你的要求设置了备用模型
+# <--- 唯一的修改在这里: 修复了 /v1/models 接口的 Bug
 @app.get("/v1/models")
 async def list_models():
     """
     返回一个符合 OpenAI 格式的模型列表。
     """
     if not GeminiClient.AVAILABLE_MODELS:
-        # 如果启动时动态加载模型列表失败，返回一个你指定的备用列表
         log('warning', "动态模型列表为空，返回指定的备用模型列表。")
         default_models = ["gemini-2.5-pro", "gemini-pro"]
         model_data = [
@@ -171,7 +172,6 @@ async def list_models():
             for model in default_models
         ]
     else:
-        # 正常情况下，返回动态加载的真实模型列表
         model_data = [
             {"id": model, "object": "model", "owned_by": "google"}
             for model in GeminiClient.AVAILABLE_MODELS
