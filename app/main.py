@@ -31,16 +31,15 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(limit="50M")
 
-# --------------- CORS 中间件 ---------------
-# 如果 ALLOWED_ORIGINS 为空列表，则不允许任何跨域请求
-if settings.ALLOWED_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# --------------- CORS 中间件 (已修改，强制开启) ---------------
+# <--- 关键修复 1: 我们不再依赖环境变量，直接写死，确保它一定生效。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --------------- 全局实例 ---------------
 load_settings()
@@ -66,21 +65,6 @@ active_requests_manager = ActiveRequestsManager(requests_pool=active_requests_po
 SKIP_CHECK_API_KEY = os.environ.get("SKIP_CHECK_API_KEY", "").lower() == "true"
 
 # --------------- 工具函数 ---------------
-# @app.middleware("http")
-# async def log_requests(request: Request, call_next):
-#     """
-#     DEBUG用，接收并打印请求内容
-#     """
-#     log('info', f"接收到请求: {request.method} {request.url}")
-#     try:
-#         body = await request.json()
-#         log('info', f"请求体: {body}")
-#     except Exception:
-#         log('info', "请求体不是 JSON 格式或者为空")
-    
-#     response = await call_next(request)
-#     return response
-
 async def check_remaining_keys_async(keys_to_check: list, initial_invalid_keys: list):
     """
     在后台异步检查剩余的 API 密钥。
@@ -95,7 +79,6 @@ async def check_remaining_keys_async(keys_to_check: list, initial_invalid_keys: 
             if key not in key_manager.api_keys: # 避免重复添加
                 key_manager.api_keys.append(key)
                 found_valid_keys = True
-            # log('info', f"API Key {key[:8]}... 有效")
         else:
             local_invalid_keys.append(key)
             log('warning', f" API Key {key[:8]}... 无效")
@@ -105,17 +88,11 @@ async def check_remaining_keys_async(keys_to_check: list, initial_invalid_keys: 
     if found_valid_keys:
         key_manager._reset_key_stack() # 如果找到新的有效key，重置栈
 
-    # 合并所有无效密钥 (初始无效 + 后台检查出的无效)
     combined_invalid_keys = list(set(initial_invalid_keys + local_invalid_keys))
-
-    # 获取当前设置中的无效密钥
     current_invalid_keys_str = settings.INVALID_API_KEYS or ""
     current_invalid_keys_set = set(k.strip() for k in current_invalid_keys_str.split(',') if k.strip())
-
-    # 更新无效密钥集合
     new_invalid_keys_set = current_invalid_keys_set.union(set(combined_invalid_keys))
 
-    # 只有当无效密钥列表发生变化时才保存
     if new_invalid_keys_set != current_invalid_keys_set:
         settings.INVALID_API_KEYS = ','.join(sorted(list(new_invalid_keys_set)))
         save_settings()
@@ -126,57 +103,42 @@ async def check_remaining_keys_async(keys_to_check: list, initial_invalid_keys: 
 sys.excepthook = handle_exception
 
 # --------------- 事件处理 ---------------
-
 @app.on_event("startup")
 async def startup_event():
-    
-    # 首先加载持久化设置，确保所有配置都是最新的
     load_settings()
-    
-    
-    # 重新加载vertex配置，确保获取到最新的持久化设置
     import app.vertex.config as vertex_config
     vertex_config.reload_config()
     
-    
-    # 初始化CredentialManager
     credential_manager_instance = CredentialManager()
-    # 添加到应用程序状态
     app.state.credential_manager = credential_manager_instance
     
-    # 初始化Vertex AI服务
     await init_vertex_ai(credential_manager=credential_manager_instance)
     schedule_cache_cleanup(response_cache_manager, active_requests_manager)
-    # 检查版本
     await check_version()
     
-    # 密钥检查 
     initial_keys = key_manager.api_keys.copy()
-    key_manager.api_keys = [] # 清空，等待检查结果
+    key_manager.api_keys = []
     first_valid_key = None
     initial_invalid_keys = []
     keys_to_check_later = []
 
-    # 阻塞式查找第一个有效密钥
     for index, key in enumerate(initial_keys):
         is_valid = await test_api_key(key)
         if is_valid:
             log('info', f"找到第一个有效密钥: {key[:8]}...")
             first_valid_key = key
-            key_manager.api_keys.append(key) # 添加到管理器
+            key_manager.api_keys.append(key)
             key_manager._reset_key_stack()
-            # 将剩余的key放入后台检查列表
             keys_to_check_later = initial_keys[index + 1:]
-            break # 找到即停止
+            break
         else:
             log('warning', f"密钥 {key[:8]}... 无效")
             initial_invalid_keys.append(key)
     
     if not first_valid_key:
         log('error', "启动时未能找到任何有效 API 密钥！")
-        keys_to_check_later = [] # 没有有效key，无需后台检查
+        keys_to_check_later = []
     else:
-        # 使用第一个有效密钥加载模型
         try:
             all_models = await GeminiClient.list_available_models(first_valid_key)
             GeminiClient.AVAILABLE_MODELS = [model.replace("models/", "") for model in all_models]
@@ -185,11 +147,9 @@ async def startup_event():
             log('warning', f"使用密钥 {first_valid_key[:8]}... 加载可用模型失败",extra={'error_message': str(e)})
 
     if not SKIP_CHECK_API_KEY:
-        # 创建后台任务检查剩余密钥
         if keys_to_check_later:
             asyncio.create_task(check_remaining_keys_async(keys_to_check_later, initial_invalid_keys))
         else:
-            # 如果没有需要后台检查的key，也要处理初始无效key
             current_invalid_keys_str = settings.INVALID_API_KEYS or ""
             current_invalid_keys_set = set(k.strip() for k in current_invalid_keys_str.split(',') if k.strip())
             new_invalid_keys_set = current_invalid_keys_set.union(set(initial_invalid_keys))
@@ -198,12 +158,11 @@ async def startup_event():
                  save_settings()
                  log('info', f"更新初始无效密钥列表完成，总无效密钥数: {len(new_invalid_keys_set)}")
 
-    else: # 跳过检查
+    else:
         log('info',"跳过 API 密钥检查")
         key_manager.api_keys.extend(keys_to_check_later)
         key_manager._reset_key_stack()
 
-    # 初始化路由器
     init_router(
         key_manager,
         response_cache_manager,
@@ -217,8 +176,6 @@ async def startup_event():
         settings.MAX_REQUESTS_PER_MINUTE,
         settings.MAX_REQUESTS_PER_DAY_PER_IP
     )
-        
-    # 初始化仪表盘路由器
     init_dashboard_router(
         key_manager,
         response_cache_manager,
@@ -227,7 +184,6 @@ async def startup_event():
     )
 
 # --------------- 异常处理 ---------------
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     from app.utils import translate_error
@@ -237,6 +193,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content=ErrorResponse(message=str(exc), type="internal_error").dict())
 
 # --------------- 路由 ---------------
+
+# <--- 关键修复 2: 添加缺失的 /v1/models 接口，以兼容各种客户端和插件。
+@app.get("/v1/models")
+async def list_models():
+    """
+    返回一个符合 OpenAI 格式的模型列表。
+    """
+    model_data = [
+        {"id": model, "object": "model", "owned_by": "google"}
+        for model in settings.SUPPORTED_MODELS
+    ]
+    return {"object": "list", "data": model_data}
 
 app.include_router(router)
 app.include_router(dashboard_router)
@@ -254,7 +222,6 @@ async def root(request: Request):
     """
     base_url = str(request.base_url).replace("http", "https")
     api_url = f"{base_url}v1" if base_url.endswith("/") else f"{base_url}/v1"
-    # 直接返回 index.html 文件
     return templates.TemplateResponse(
         "index.html", {"request": request, "api_url": api_url}
     )
