@@ -311,7 +311,7 @@ async def chat_completions(
         return await vertex_chat_completions(request, http_request, _dp, _du)
     return await aistudio_chat_completions(request, http_request, _dp, _du)
 
-@router.post("/gemini/{api_version:str}/models/{model_and_responseType:path}")
+@router.post("/{api_version:str}/models/{model_and_responseType:path}")
 async def gemini_chat_completions(
     request: Request,
     model_and_responseType: str = Path(...),
